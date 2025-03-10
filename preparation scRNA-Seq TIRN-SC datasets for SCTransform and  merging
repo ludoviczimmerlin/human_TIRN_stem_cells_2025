@@ -1,0 +1,287 @@
+# script for scRNA-Seq file preparation(filtering, SCTransform normalization, merging)
+# Merging of primed, TIRN and TIRN+iDUX4 scRNAseq datasets using SCTransform for sequencing depth correction
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+sessionInfo()
+
+
+# Data filtering RUES02 E8
+RUES02E8.data <- Read10X(data.dir ="Path_to Filtered Matrices/E8/")
+RUES02E8 <- CreateSeuratObject(counts = RUES02E8.data, project = "RUES02E8")
+RUES02E8
+all.genesE8 <- rownames(RUES02E8)
+RUES02E8[["percent.mt"]] <- PercentageFeatureSet(RUES02E8, pattern = "^MT-")
+VlnPlot(RUES02E8, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3,  cols = c("blue"))
+FeatureScatter(RUES02E8, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("blue"))
+
+#removal dead-apoptotic and low count RNA per cell
+RUES02E8_f <- subset(RUES02E8, subset = percent.mt > 5  & percent.mt < 45 & nFeature_RNA > 2000 & !c(nFeature_RNA < 4000 & percent.mt < 20 )) 
+FeatureScatter(RUES02E8_f, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("blue")) & xlim(c(0,85)) & ylim(c(0,12500))
+RUES02E8_f
+
+#standard analysis to remove any residual cluster with high percent.mt or low nFeature_RNA
+RUES02E8_f <- NormalizeData(RUES02E8_f, normalization.method = "LogNormalize", scale.factor = 10000)
+RUES02E8_f <- FindVariableFeatures(RUES02E8_f, selection.method = "vst", nfeatures = 2000)
+RUES02E8_f <- ScaleData(RUES02E8_f, assay = 'RNA', features = all.genesE8)
+
+#PCA analysis RUES02 E8
+RUES02E8_f <- RunPCA(RUES02E8_f)
+Idents(RUES02E8_f) <- "orig.ident"
+DimPlot(RUES02E8_f, reduction = "pca", cols = c("blue"), pt.size = 1)
+RUES02E8_f <- FindNeighbors(RUES02E8_f, dims = 1:50)
+
+#clustering
+RUES02E8_f <- FindClusters(RUES02E8_f, resolution = 0.5)
+
+#UMAP projection. Dimensionality was defined at 50PCs based on the JackStraw procedure for all 3 samples.
+RUES02E8_f <- RunUMAP(RUES02E8_f, dims = 1:50)
+Idents(RUES02E8_f) <- "orig.ident"
+DimPlot(RUES02E8_f, reduction = "umap", cols = c("blue"), pt.size = 1)
+Idents(RUES02E8_f) <- "seurat_clusters"
+DimPlot(RUES02E8_f, reduction = "umap")
+FeaturePlot(RUES02E8_f, features = "percent.mt", max.cutoff = 40)
+FeaturePlot(RUES02E8_f, features = "nFeature_RNA")
+Idents(RUES02E8_f) <- "seurat_clusters"
+
+#removal of cluster 3 due to high number of mt genes
+RUES02E8_f2 <- subset(RUES02E8_f, idents=c(0,1,2,4,5))
+RUES02E8_f2
+Idents(RUES02E8_f2) <- "orig.ident"
+FeatureScatter(RUES02E8_f2, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("blue")) & xlim(c(0,85)) & ylim(c(0,12500))
+RUES02E8_f2
+
+#standard analysis to check filtered RUES02 E8 sample
+RUES02E8_f2 <- NormalizeData(RUES02E8_f2, normalization.method = "LogNormalize", scale.factor = 10000)
+RUES02E8_f2 <- FindVariableFeatures(RUES02E8_f2, selection.method = "vst", nfeatures = 2000)
+RUES02E8_f2 <- ScaleData(RUES02E8_f2, assay = 'RNA', features = all.genesE8)
+
+#PCA analysis RUES02 E8
+RUES02E8_f2 <- RunPCA(RUES02E8_f2)
+Idents(RUES02E8_f2) <- "orig.ident"
+DimPlot(RUES02E8_f2, reduction = "pca", cols = c("blue"), pt.size = 1)
+RUES02E8_f2 <- FindNeighbors(RUES02E8_f2, dims = 1:50)
+
+#clustering
+RUES02E8_f2 <- FindClusters(RUES02E8_f2, resolution = 0.5)
+
+#UMAP projection
+RUES02E8_f2 <- RunUMAP(RUES02E8_f2, dims = 1:50)
+Idents(RUES02E8_f2) <- "orig.ident"
+DimPlot(RUES02E8_f2, reduction = "umap", cols = c("blue"), pt.size = 1)
+Idents(RUES02E8_f2) <- "seurat_clusters"
+DimPlot(RUES02E8_f2, reduction = "umap")
+FeaturePlot(RUES02E8_f2, features = "percent.mt", max.cutoff = 40)
+FeaturePlot(RUES02E8_f2, features = "nFeature_RNA")
+
+
+# Data filtering RUES02 L3i (TIRN)
+RUES02L3i.data <- Read10X(data.dir ="Path_to Filtered Matrices/L3i/")
+RUES02L3i <- CreateSeuratObject(counts = RUES02L3i.data, project = "RUES02L3i")
+RUES02L3i
+all.genesL3i <- rownames(RUES02L3i)
+RUES02L3i[["percent.mt"]] <- PercentageFeatureSet(RUES02L3i, pattern = "^MT-")
+VlnPlot(RUES02L3i, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3,  cols = c("red"))
+FeatureScatter(RUES02L3i, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("red"))
+
+#removal dead-apoptotic and low count RNA per cell
+RUES02L3i_f <- subset(RUES02L3i, subset = percent.mt > 5  & percent.mt < 50 & nFeature_RNA > 1200 & !c(nFeature_RNA < 2100 & percent.mt < 25 ))
+FeatureScatter(RUES02L3i_f, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("red")) & xlim(c(0,85)) & ylim(c(0,10000))
+RUES02L3i_f
+
+#standard analysis to remove any residual cluster with high percent.mt or low nFeature_RNA
+RUES02L3i_f <- NormalizeData(RUES02L3i_f, normalization.method = "LogNormalize", scale.factor = 10000)
+RUES02L3i_f <- FindVariableFeatures(RUES02L3i_f, selection.method = "vst", nfeatures = 2000)
+RUES02L3i_f <- ScaleData(RUES02L3i_f, assay = 'RNA', features = all.genesL3i)
+
+#PCA analysis RUES02 L3i (TIRN)
+RUES02L3i_f <- RunPCA(RUES02L3i_f)
+Idents(RUES02L3i_f) <- "orig.ident"
+DimPlot(RUES02L3i_f, reduction = "pca", cols = c("red"), pt.size = 1)
+RUES02L3i_f <- FindNeighbors(RUES02L3i_f, dims = 1:50)
+
+#clustering
+RUES02L3i_f <- FindClusters(RUES02L3i_f, resolution = 0.5)
+
+#UMAP projection. Dimensionality was defined at 50PCs based on the JackStraw procedure for all 3 samples.
+RUES02L3i_f <- RunUMAP(RUES02L3i_f, dims = 1:50)
+Idents(RUES02L3i_f) <- "orig.ident"
+DimPlot(RUES02L3i_f, reduction = "umap", cols = c("red"), pt.size = 1)
+Idents(RUES02L3i_f) <- "seurat_clusters"
+DimPlot(RUES02L3i_f, reduction = "umap")
+FeaturePlot(RUES02L3i_f, features = "percent.mt", max.cutoff = 40)
+FeaturePlot(RUES02L3i_f, features = "nFeature_RNA")
+Idents(RUES02L3i_f) <- "seurat_clusters"
+
+#removal of clusters 2 and 7 due to high number of mt genes
+RUES02L3i_f2 <- subset(RUES02L3i_f, idents=c(0,1,3,4,5,6,8))
+RUES02L3i_f2
+Idents(RUES02L3i_f2) <- "orig.ident"
+FeatureScatter(RUES02L3i_f2, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("red")) & xlim(c(0,85)) & ylim(c(0,12500))
+RUES02L3i_f2
+
+#standard analysis to check filtered RUES02 L3i (TIRN) sample
+RUES02L3i_f2 <- NormalizeData(RUES02L3i_f2, normalization.method = "LogNormalize", scale.factor = 10000)
+RUES02L3i_f2 <- FindVariableFeatures(RUES02L3i_f2, selection.method = "vst", nfeatures = 2000)
+RUES02L3i_f2 <- ScaleData(RUES02L3i_f2, assay = 'RNA', features = all.genesL3i)
+
+#PCA analysis RUES02 L3i (TIRN)
+RUES02L3i_f2 <- RunPCA(RUES02L3i_f2)
+Idents(RUES02L3i_f2) <- "orig.ident"
+DimPlot(RUES02L3i_f2, reduction = "pca", cols = c("red"), pt.size = 1)
+RUES02L3i_f2 <- FindNeighbors(RUES02L3i_f2, dims = 1:50)
+
+#clustering
+RUES02L3i_f2 <- FindClusters(RUES02L3i_f2, resolution = 0.5)
+
+#UMAP projection
+RUES02L3i_f2 <- RunUMAP(RUES02L3i_f2, dims = 1:50)
+Idents(RUES02L3i_f2) <- "orig.ident"
+DimPlot(RUES02L3i_f2, reduction = "umap", cols = c("red"), pt.size = 1)
+Idents(RUES02L3i_f2) <- "seurat_clusters"
+DimPlot(RUES02L3i_f2, reduction = "umap")
+
+#checking expression of representative genes
+DotPlot(RUES02L3i_f2, features = c("NANOG", "GATA6", "TPRXL"))
+
+
+# Data filtering RUES02 L3i with transgenic Dux4 expression (TIRN+iDUX4)
+RUES02Dux4.data <- Read10X(data.dir ="Path_to Filtered Matrices/L3iDux4/")
+RUES02Dux4 <- CreateSeuratObject(counts = RUES02Dux4.data, project = "RUES02Dux4")
+RUES02Dux4
+all.genesDux4 <- rownames(RUES02Dux4)
+RUES02Dux4[["percent.mt"]] <- PercentageFeatureSet(RUES02Dux4, pattern = "^MT-")
+VlnPlot(RUES02Dux4, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3,  cols = c("green"))
+FeatureScatter(RUES02Dux4, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("green"))
+
+#removal dead-apoptotic and low count RNA per cell
+RUES02Dux4_f <- subset(RUES02Dux4, subset = percent.mt > 5  & percent.mt < 50 & nFeature_RNA > 2000 & !c(nFeature_RNA < 4000 & percent.mt < 20 )) 
+FeatureScatter(RUES02Dux4_f, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("green")) & xlim(c(0,85)) & ylim(c(0,12500))
+RUES02Dux4_f
+
+#standard analysis to remove any residual cluster with high percent.mt or low nFeature_RNA
+RUES02Dux4_f <- NormalizeData(RUES02Dux4_f, normalization.method = "LogNormalize", scale.factor = 10000)
+RUES02Dux4_f <- FindVariableFeatures(RUES02Dux4_f, selection.method = "vst", nfeatures = 2000)
+RUES02Dux4_f <- ScaleData(RUES02Dux4_f, assay = 'RNA', features = all.genesDux4)
+
+#PCA analysis RUES02 L3i with transgenic Dux4 expression (TIRN+iDUX4)
+RUES02Dux4_f <- RunPCA(RUES02Dux4_f)
+Idents(RUES02Dux4_f) <- "orig.ident"
+DimPlot(RUES02Dux4_f, reduction = "pca", cols = c("green"), pt.size = 1)
+RUES02Dux4_f <- FindNeighbors(RUES02Dux4_f, dims = 1:50)
+
+#clustering
+RUES02Dux4_f <- FindClusters(RUES02Dux4_f, resolution = 0.6)
+
+#UMAP projection. Dimensionality was defined at 50PCs based on the JackStraw procedure for all 3 samples.
+RUES02Dux4_f <- RunUMAP(RUES02Dux4_f, dims = 1:50)
+Idents(RUES02Dux4_f) <- "orig.ident"
+DimPlot(RUES02Dux4_f, reduction = "umap", cols = c("green"), pt.size = 1)
+Idents(RUES02Dux4_f) <- "seurat_clusters"
+DimPlot(RUES02Dux4_f, reduction = "umap")
+FeaturePlot(RUES02Dux4_f, features = "percent.mt", max.cutoff = 40)
+FeaturePlot(RUES02Dux4_f, features = "nFeature_RNA")
+Idents(RUES02Dux4_f) <- "seurat_clusters"
+
+#removal of clusters 0,6 and 9 due to high number of mt genes
+RUES02Dux4_f2 <- subset(RUES02Dux4_f, idents=c(1,2,3,4,5,7,8, 10))
+RUES02Dux4_f2
+Idents(RUES02Dux4_f2) <- "orig.ident"
+FeatureScatter(RUES02Dux4_f2, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("green")) & xlim(c(0,85)) & ylim(c(0,12500))
+RUES02Dux4_f2
+
+#standard analysis to check filtered RUES02 L3i with transgenic Dux4 expression (TIRN+iDUX4) sample
+RUES02Dux4_f2 <- NormalizeData(RUES02Dux4_f2, normalization.method = "LogNormalize", scale.factor = 10000)
+RUES02Dux4_f2 <- FindVariableFeatures(RUES02Dux4_f2, selection.method = "vst", nfeatures = 2000)
+RUES02Dux4_f2 <- ScaleData(RUES02Dux4_f2, assay = 'RNA', features = all.genesDux4)
+
+#PCA analysis RUES02 L3i L3i with transgenic Dux4 expression (TIRN+iDUX4)
+RUES02Dux4_f2 <- RunPCA(RUES02Dux4_f2)
+Idents(RUES02Dux4_f2) <- "orig.ident"
+DimPlot(RUES02Dux4_f2, reduction = "pca", cols = c("green"), pt.size = 1)
+RUES02Dux4_f2 <- FindNeighbors(RUES02Dux4_f2, dims = 1:50)
+
+#clustering
+RUES02Dux4_f2 <- FindClusters(RUES02Dux4_f2, resolution = 0.5)
+
+#UMAP projection
+RUES02Dux4_f2 <- RunUMAP(RUES02Dux4_f2, dims = 1:50)
+Idents(RUES02Dux4_f2) <- "orig.ident"
+DimPlot(RUES02Dux4_f2, reduction = "umap", cols = c("green"), pt.size = 1)
+Idents(RUES02Dux4_f2) <- "seurat_clusters"
+DimPlot(RUES02Dux4_f2, reduction = "umap")
+FeaturePlot(RUES02Dux4_f2, features = "percent.mt", max.cutoff = 40)
+FeaturePlot(RUES02Dux4_f2, features = "nFeature_RNA")
+
+#checking expression of representative genes
+DotPlot(RUES02Dux4_f2, features = c("DUXA", "CPHXL", "TPRXL", "NANOG", "GATA6"))
+
+#removal non-filtered data files
+rm(RUES02E8.data)
+rm(RUES02L3i.data)
+rm(RUES02Dux4.data)
+rm(RUES02E8)
+rm(RUES02L3i)
+rm(RUES02Dux4)
+rm(RUES02E8_f)
+rm(RUES02L3i_f)
+rm(RUES02Dux4_f)
+
+#label samples
+RUES02L3i_f2$sample <- "N"
+RUES02E8_f2$sample <- "P"
+RUES02Dux4_f2$sample <- "D"
+
+#normalization and variance stabilization of each sample to account for for sequencing depth
+RUES02E8_f.normalized <- SCTransform(RUES02E8_f2, vst.flavor = "v2")
+RUES02L3i_f.normalized <- SCTransform(RUES02L3i_f2, vst.flavor = "v2")
+RUES02Dux4_f.normalized <- SCTransform(RUES02Dux4_f2, vst.flavor = "v2")
+
+#Create normalized Seurat objects that preserve data for all genes
+RUES02E8_fn <- SCTransform(RUES02E8_f2, vst.flavor = "v2", return.only.var.genes = F, min_cells=0)
+RUES02L3i_fn <- SCTransform(RUES02L3i_f2, vst.flavor = "v2", return.only.var.genes = F, min_cells=0)
+RUES02Dux4_fn <- SCTransform(RUES02Dux4_f2, vst.flavor = "v2", return.only.var.genes = F, min_cells=0)
+
+#merging normalized samples
+RUES02E8L3iDux4_normalized <- merge(RUES02E8_f.normalized, y = c(RUES02L3i_f.normalized, RUES02Dux4_f.normalized), add.cell.ids = c("E8", "L3i", "Dux4"), project = "RUES02E8L3iDux4SCT", merge.data = TRUE)
+RUES02E8L3iDux4_n <- merge(RUES02E8_fn, y = c(RUES02L3i_fn, RUES02Dux4_fn), add.cell.ids = c("E8", "L3i", "Dux4"), project = "RUES02E8L3iDux4SCTallgenes", merge.data = TRUE)
+DefaultAssay(RUES02E8L3iDux4_n) <- "SCT"
+Idents(RUES02E8L3iDux4_n) <- "sample"
+
+#checking sample diparities. Note L3i (TIRN) sample had lower sequencing depth
+VlnPlot(RUES02E8L3iDux4_n, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3,  cols = c("blue", "red", "green"))
+#defining variable features from merged normalized datafiles
+VariableFeatures(RUES02E8L3iDux4_n[["SCT"]]) <- rownames(RUES02E8L3iDux4_normalized[["SCT"]]@scale.data)
+
+#removal normalized files used to define variable features
+rm(RUES02E8L3iDux4_normalized)
+rm(RUES02E8_f.normalized)
+rm(RUES02L3i_f.normalized)
+rm(RUES02Dux4_f.normalized)
+
+#PCA analysis merged normalized samples
+Idents(RUES02E8L3iDux4_n) <- "sample"
+RUES02E8L3iDux4_n <- RunPCA(RUES02E8L3iDux4_n, features = VariableFeatures(object = RUES02E8L3iDux4_n))
+DimPlot(RUES02E8L3iDux4_n, reduction = "pca", cols = c("blue", "red", "green"), pt.size = 1)
+RUES02E8L3iDux4_n <- FindNeighbors(RUES02E8L3iDux4_n, dims = 1:50)
+
+#clustering
+RUES02E8L3iDux4_n <- FindClusters(RUES02E8L3iDux4_n, resolution = 0.5)
+
+#UMAP projection.
+RUES02E8L3iDux4_n <- RunUMAP(RUES02E8L3iDux4_n, dims = 1:50)
+Idents(RUES02E8L3iDux4_n) <- "sample"
+DimPlot(RUES02E8L3iDux4_n, reduction = "umap", cols = c("blue", "red", "green"), pt.size = 1)
+my_levelsR <- c("P", "N", "D")
+RUES02E8L3iDux4_n@active.ident <- factor(x = RUES02E8L3iDux4_n@active.ident, levels = my_levelsR)
+DimPlot(RUES02E8L3iDux4_n, reduction = "umap", cols = c("blue", "red", "green"), pt.size = 1)
+
+#removal non-merged files
+rm(RUES02E8_f2)
+rm(RUES02L3i_f2)
+rm(RUES02Dux4_f2)
+rm(RUES02E8_fn)
+rm(RUES02L3i_fn)
+rm(RUES02Dux4_fn)
+
