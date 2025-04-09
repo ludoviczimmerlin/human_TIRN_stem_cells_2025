@@ -1,0 +1,144 @@
+library("SummarizedExperiment")
+library("DESeq2")
+library(AnnotationHub)
+library(ensembldb)
+library(ComplexHeatmap)
+library(RColorBrewer)
+
+# Zou clusters are provided as a csv file
+Zou_clusters_DF <- read.csv("Zou_clusters_DF.csv")
+preZGA_Ribo <- Zou_clusters_DF$preZGA_Ribo
+eight_cell_Ribo <- Zou_clusters_DF$eight_cell_Ribo
+ICM_Ribo <- Zou_clusters_DF$ICM_Ribo
+hESC_Ribo <- Zou_clusters_DF$hESC_Ribo
+preZGA_8C_ICM_Ribo <- union(preZGA_Ribo, union(eight_cell_Ribo, ICM_Ribo))
+preZGA_8C_ICM_hESC_Ribo <- union(preZGA_8C_ICM_Ribo, hESC_Ribo)
+
+# Annotation transcription factors http://humantfs.ccbr.utoronto.ca/download.php
+human_TF <- read.csv("human_TF_EnsDb_v109.csv")
+genes_humanTF <- rownames(human_TF)
+
+#Create FPKM matrix from GSE141639 and create dds object with DESeq2
+# Load summarized Experiment object
+load("path to summarized experiment object")
+# View SumExp
+se
+# Load CSV
+csvfile <- file.path("path to csv file")
+sampleTable <- read.csv(csvfile,row.names=1)
+colData(se) <- DataFrame(sampleTable)
+# Create DEseq object
+dds <- DESeqDataSet(se, design = ~ condition)
+#Pre-filtering
+keep <- rowSums(counts(dds)) >= 1
+dds <- dds[keep,]
+# Define levels
+dds$condition <- relevel(dds$condition, ref = "primed")
+#differential expression analysis
+dds <- DESeq(dds)
+resultsNames(dds)
+mod_mat <- model.matrix(design(dds), colData(dds))
+mod_mat
+TIRN <- colMeans(mod_mat[dds$condition =="TIRN", ])
+primed <- colMeans(mod_mat[dds$condition =="primed", ])
+res_TIRN_primed <- results(dds, contrast = TIRN - primed)
+res_df <- data.frame(res_TIRN_primed)
+# Create ensemblID annotations
+ah <- AnnotationHub()
+query(AnnotationHub(), c("EnsDb", "Homo sapiens"))
+EnsDb.Hsapiens.v109 <- ah[["AH109606"]]
+EnsDb.Hsapiens.v109
+#Translate EnsemblIDs
+res_df$EnsemblID <- rownames(res_df)
+res_df$gene_symbol <- mapIds(x = EnsDb.Hsapiens.v109, keys = res_df$EnsemblID,
+                             column = "SYMBOL",
+                             keytype = "GENEID",
+                             multiVals = "first")
+res_df$gene_symbol2 <- res_df$gene_symbol
+res_df$gene_symbol2[res_df$gene_symbol2==""]<-NA
+res_df$gene_symbol2 <- ifelse(is.na(res_df$gene_symbol2), res_df$EnsemblID, res_df$gene_symbol2)
+res_df$gene_symbol <- make.unique(res_df$gene_symbol2)
+rownames(res_df) <- res_df$gene_symbol
+res_df <- subset(res_df, select = -c(gene_symbol2))
+#DEG UP and DOWN in res_df
+res_df_UP <- subset(res_df_annotated, padj < 0.05 & log2FoldChange > log2(1.5))
+genes_8lines_UP <- unlist(res_df_UP$gene_symbol)
+res_df_DOWN <- subset(res_df_annotated, padj < 0.05 & log2FoldChange < -log2(1.5))
+genes_8lines_DOWN <- unlist(res_df_DOWN$gene_symbol)
+genes_humanTF_8lines_UP <- intersect(transcr_reg, genes_8lines_UP)
+genes_humanTF_8lines_DOWN <- intersect(transcr_reg, genes_8lines_DOWN)
+
+# Create FPKM matrix
+fpkm_mat <- fpkm(dds)
+#Translate EnsemblIDs
+fpkm_mat <- data.frame(fpkm_mat)
+fpkm_mat$EnsemblID <- rownames(fpkm_mat)
+fpkm_mat$gene_symbol <- mapIds(x = EnsDb.Hsapiens.v109, keys = fpkm_mat$EnsemblID,
+                               column = "SYMBOL",
+                               keytype = "GENEID",
+                               multiVals = "first")
+fpkm_mat$gene_symbol2 <- fpkm_mat$gene_symbol
+fpkm_mat$gene_symbol2[fpkm_mat$gene_symbol2==""]<-NA
+fpkm_mat$gene_symbol2 <- ifelse(is.na(fpkm_mat$gene_symbol2), fpkm_mat$EnsemblID, fpkm_mat$gene_symbol2)
+fpkm_mat$gene_symbol <- make.unique(fpkm_mat$gene_symbol2)
+rownames(fpkm_mat) <- fpkm_mat$gene_symbol
+fpkm_mat <- subset(fpkm_mat, select = -c(gene_symbol2))
+fpkm_mat <- subset(fpkm_mat, select = -c(EnsemblID, gene_symbol))
+log2fpkm_mat <- log2(fpkm_mat + 1)
+log2var_fpkm <- apply(log2fpkm_mat, 1, var)
+log2selectedGenesV_fpkm <- names(log2var_fpkm[log2var_fpkm>0])
+
+# Ribo-Seq FPKM data is available as Table S2 at https://doi.org/10.1126/science.abo7923
+data_rep <- read.csv("path to RiboSeq human embryo FPKM replicate data.csv")
+data_rep <- data_rep[, c("gene", preZGA_8C_ICM_Ribo)]
+rownames(data_rep) <- data_rep$gene
+data_rep <- subset(data_rep, select = -c(gene))
+# Create log2 transformed matrix and select genes with non-zero variance
+datamatrix_rep <- as.matrix(data_rep)
+log2datamatrix_rep <- log2(datamatrix_rep + 1)
+log2var_rep <- apply(log2datamatrix_rep, 1, var)
+log2selectedGenesV_rep <- names(log2var_rep[log2var_rep>0])
+
+# select genes with Zou replicate log2
+interestedGenes <- intersect(genes_humanTF_8lines_UP, preZGA_8C_ICM_Ribo)
+log2interestedGenesV_rep <- intersect(interestedGenes, intersect(log2selectedGenesV_rep, log2selectedGenesV_fpkm))
+
+log2filtereddatamatrix_rep <- log2datamatrix_rep[log2interestedGenesV_rep, ]
+log2filteredfpkm_mat_rep <- log2fpkm_mat[log2interestedGenesV_rep, ]
+
+log2filtereddatamatrix_rep_scale <- t(scale(t(log2filtereddatamatrix_rep)))
+log2filteredfpkm_mat_rep_scale <- t(scale(t(log2filteredfpkm_mat_rep)))
+
+
+
+# Create heatmaps
+clusterDF <- rownames(log2filteredfpkm_mat_rep_scale)
+clusterDF <- as.data.frame(clusterDF)
+rownames(clusterDF) <- clusterDF$clusterDF
+clusterDF$cluster <- NA
+clusterDF$cluster <- ifelse(clusterDF$clusterDF %in% preZGA_Ribo, "2C-4C",
+                            ifelse(clusterDF$clusterDF %in% eight_cell_Ribo, "8C-Morula",
+                                   ifelse(clusterDF$clusterDF %in% ICM_Ribo, "E5-E6 ICM", NA)))
+mylevels <- c("2C-4C", "8C-Morula", "E5-E6 ICM")
+split <- factor (x = clusterDF$cluster, levels = mylevels)
+ordercol <- c("H9_E8", "RUES01_E8", "RUES02_E8", "E5C3_E8", "C12_E8", "C2_E8", "E1CA1_E8", "E1CA2_E8", "H9_L3i", "RUES01_L3i", "RUES02_L3i", "E5C3_L3i", "C12_L3i", "C2_L3i", "E1CA1_L3i", "E1CA2_L3i")
+
+# order by L3i mean scale FPKM
+log2filteredfpkm_mat_rep_scale <- data.frame(log2filteredfpkm_mat_rep_scale)
+log2filteredfpkm_mat_rep_scale$L3iMean <- rowMeans(log2filteredfpkm_mat_rep_scale[, c("H9_L3i", "RUES01_L3i", "RUES02_L3i", "E5C3_L3i", "C12_L3i", "C2_L3i", "E1CA1_L3i", "E1CA2_L3i")])
+log2row_order_rep <- rownames(log2filteredfpkm_mat_rep_scale %>% arrange(desc(L3iMean)))
+
+# heatmap
+par(oma=c(5,0,0,0))
+mypalette <- brewer.pal(11,"RdYlBu")
+morecols <- colorRampPalette(mypalette)
+
+ht1 <- Heatmap(log2filtereddatamatrix_rep_scale, name = "Zou log2(FPKM+1)", split = split, row_order = log2row_order_rep,
+               show_row_names = FALSE, col=rev(morecols(50)), cluster_columns = FALSE, cluster_row_slices = FALSE,
+               clustering_method_rows = "ward.D2", clustering_distance_rows = "pearson",
+               row_names_gp = gpar(fontsize = 7), row_gap = unit(1.5, "mm"), row_title_rot = 0, column_names_gp = gpar(fontsize = 8), row_title_gp = gpar(fontsize = 15))
+ht2 <- Heatmap(log2filteredfpkm_mat_rep_scale[,ordercol], name = "8lines log2(FPKM+1)", split = split, row_order = log2row_order_rep, 
+               show_row_names = FALSE, col=rev(morecols(50)), cluster_columns = FALSE, cluster_row_slices = FALSE,
+               clustering_method_rows = "ward.D2", clustering_distance_rows = "pearson",
+               row_names_gp = gpar(fontsize = 7), row_gap = unit(1.5, "mm"), row_title_rot = 0, column_names_gp = gpar(fontsize = 8), row_title_gp = gpar(fontsize = 15)) 
+draw(ht1 + ht2, ht_gap = unit(5, "mm"))
