@@ -1,0 +1,155 @@
+library(Seurat)
+library(AnnotationHub)
+library(ensembldb)
+library(ggplot2)
+
+# Retrieve ensemblID annotations
+ah <- AnnotationHub()
+query(AnnotationHub(), c("EnsDb", "Homo sapiens"))
+EnsDb.Hsapiens.v109 <- ah[["AH109606"]]
+EnsDb.Hsapiens.v109
+
+# Yan et al 2013 pre-implantation embryo data (re-aligned to hg38 with Ensembl v109)
+Yanhg38v109.data <- ReadSTARsolo(data.dir = "Yan2013_rawcounts/")
+Yanhg38v109 <- CreateSeuratObject(counts = Yanhg38v109.data, project = "Yanhg38v109")
+Yanhg38v109
+# Add metadata
+MetadataYan <- read.delim("Yan_metadata.tsv", row.names=1, header=TRUE)
+MetadataYan <- subset(MetadataYan, select = c("Type", "Type2"))
+Yanhg38v109 <- AddMetaData(Yanhg38v109, metadata = MetadataYan)
+Yanhg38v109$sample <- "embryo_Yan"
+Yanhg38v109$Type3 <- ifelse(Yanhg38v109$Type == "oocyte", "oocyte_Y", 
+                            ifelse(Yanhg38v109$Type == "zygote", "zygote_Y",
+                                   ifelse(Yanhg38v109$Type == "two_cell", "two_cell_Y", 
+                                          ifelse(Yanhg38v109$Type == "four_cell", "four_cell_Y",
+                                                 ifelse(Yanhg38v109$Type == "eight_cell", "eight_cell_Y",
+                                                        ifelse(Yanhg38v109$Type == "morula", "morula_Y",
+                                                               ifelse(Yanhg38v109$Type == "late_blastocyst", "late_blastocyst_Y",
+                                                                      ifelse(Yanhg38v109$Type == "hESC_p0", "hESCp0_Y",
+                                                                             ifelse(Yanhg38v109$Type == "hESC_p10", "hESCp10_Y", "other")))))))))
+# Prepare dataset
+Yanhg38v109[["percent.mt"]] <- PercentageFeatureSet(Yanhg38v109, pattern = "^MT-")
+Idents(Yanhg38v109) <- "sample"
+VlnPlot(Yanhg38v109, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, cols = "blue")
+Idents(Yanhg38v109) <- "Type"
+Yanhg38v109 <- subset(Yanhg38v109, idents = c("oocyte", "zygote", "two_cell", "four_cell", "eight_cell", "morula", "hESC_p10"))
+Idents(Yanhg38v109) <- "Type"
+my_levels_Yan <- c("oocyte", "zygote", "two_cell", "four_cell", "eight_cell", "morula", "late_blastocyst", "hESC_p0", "hESC_p10")
+Yanhg38v109@active.ident <- factor(x = Yanhg38v109@active.ident, levels = my_levels_Yan)
+VlnPlot(Yanhg38v109, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+FeatureScatter(Yanhg38v109, feature1 = "percent.mt", feature2 = "nFeature_RNA")
+# Standard PCA-UMAP analysis
+Yanhg38v109 <- NormalizeData(Yanhg38v109, normalization.method = "LogNormalize", scale.factor = 10000)
+Yanhg38v109 <- FindVariableFeatures(Yanhg38v109, selection.method = "vst", nfeatures = 2000)
+all.genesY <- rownames(Yanhg38v109)
+Yanhg38v109 <- ScaleData(Yanhg38v109, features = all.genesY)
+Yanhg38v109 <- RunPCA(Yanhg38v109, features = all.genesY)
+DimPlot(Yanhg38v109, reduction = "pca")
+Yanhg38v109 <- FindNeighbors(Yanhg38v109, dims = 1:50)
+Yanhg38v109 <- FindClusters(Yanhg38v109, resolution = 0.5)
+Yanhg38v109 <- RunUMAP(Yanhg38v109, dims = 1:50, return.model = TRUE)
+DimPlot(Yanhg38v109, reduction = "umap")
+Idents(Yanhg38v109) <- "Type"
+DimPlot(Yanhg38v109, reduction = "umap")
+
+
+# Petropoulos 2016 pre-implantation embryo (re-aligned to hg38 with Ensembl v109)
+Petropouloshg38v109.data <- ReadSTARsolo(data.dir = "Petropoulos2016_rawcounts/")
+Petropouloshg38v109 <- CreateSeuratObject(counts = Petropouloshg38v109.data, project = "Petropouloshg38v109")
+Petropouloshg38v109
+# Add metadata
+MetadataPetropoulos <- read.delim("Petropoulos_metadata.txt", row.names=31, header=TRUE)
+rownames(MetadataPetropoulos) <- MetadataPetropoulos$Source.Name
+MetadataPetropoulos$Embryonic_stage <- ifelse(grepl("E3", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E3", ifelse(grepl("E4.late", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E4.late", ifelse(grepl("E4", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E4", ifelse(grepl("E5.early", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E5.early", ifelse(grepl("E5", MetadataPetropoulos$Characteristics.individual., ignore.case = T),"E5",ifelse(grepl("E6", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E6",ifelse(grepl("E7", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E7", "other")))))))
+MetadataPetropoulos$Embryonic_stage2 <- ifelse(grepl("trophectoderm", MetadataPetropoulos$Characteristics.inferred.lineage., ignore.case = T), "trophectoderm",
+                                                      ifelse(grepl("endoderm", MetadataPetropoulos$Characteristics.inferred.lineage., ignore.case = T), "primitive endoderm",
+                                                             ifelse(grepl("E3", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E3", ifelse(grepl("E4.late", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E4.late", ifelse(grepl("E4", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E4", ifelse(grepl("E5.early", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E5.early", ifelse(grepl("E5", MetadataPetropoulos$Characteristics.individual., ignore.case = T),"E5",ifelse(grepl("E6", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E6",ifelse(grepl("E7", MetadataPetropoulos$Characteristics.individual., ignore.case = T), "E7", "other")))))))))
+MetadataPetropoulos <- subset(MetadataPetropoulos, select = c("Embryonic_stage", "Embryonic_stage2"))
+Petropouloshg38v109 <- AddMetaData(Petropouloshg38v109, metadata = MetadataPetropoulos)
+Petropouloshg38v109$sample <- "embryo_Petropoulos"
+# Prepare dataset
+Petropouloshg38v109[["percent.mt"]] <- PercentageFeatureSet(Petropouloshg38v109, pattern = "^MT-")
+Idents(Petropouloshg38v109) <- "sample"
+VlnPlot(Petropouloshg38v109, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3,  cols = c("blue"))
+FeatureScatter(Petropouloshg38v109, feature1 = "percent.mt", feature2 = "nFeature_RNA", cols = c("blue"))
+# Subset dataset
+Idents(Petropouloshg38v109) <- "Embryonic_stage2"
+Petropouloshg38v109f <- subset(Petropouloshg38v109, idents = c("E3", "E4", "E4.late", "E5.early", "E5", "E6", "E7"))
+# Standard PCA-UMAP analysis
+Petropouloshg38v109f <- NormalizeData(Petropouloshg38v109f, normalization.method = "LogNormalize", scale.factor = 10000)
+Petropouloshg38v109f <- FindVariableFeatures(Petropouloshg38v109f, selection.method = "vst", nfeatures = 2000)
+Petropouloshg38v109f <- ScaleData(Petropouloshg38v109f, features = all.genesY)
+Petropouloshg38v109f <- RunPCA(Petropouloshg38v109f, features = all.genesP)
+DimPlot(Petropouloshg38v109f, reduction = "pca")
+Petropouloshg38v109f <- FindNeighbors(Petropouloshg38v109f, dims = 1:50)
+Petropouloshg38v109f <- FindClusters(Petropouloshg38v109f, resolution = 0.5)
+Petropouloshg38v109f <- RunUMAP(Petropouloshg38v109f, dims = 1:50, return.model = TRUE)
+DimPlot(Petropouloshg38v109f, reduction = "umap")
+# Consolidate annotations with Yan dataset
+Petropouloshg38v109f$Type <- ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E3", "eight_cell", 
+                                    ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E4", "morula", 
+                                           ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E4.late", "morula",
+                                                  ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E5.early", "morula",
+                                                         ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E5", "prelineage_ICM",
+                                                                ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E6", "naive epiblast",
+                                                                       ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E7", "naive epiblast", "other")))))))
+Petropouloshg38v109f$Type3 <- ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E3", "E3_P", 
+                                    ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E4", "E4_P", 
+                                           ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E4.late", "E4.late_P",
+                                                  ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E5.early", "E5.early_P",
+                                                         ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E5", "E5_P",
+                                                                ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E6", "E6_P",
+                                                                       ifelse(Petropouloshg38v109f$Embryonic_stage2 == "E7", "E7_P", "other")))))))
+Idents(Petropouloshg38v109f) <- "Type"
+DimPlot(Petropouloshg38v109f, reduction = "umap")
+
+# Merge datasets
+merged_embryo <- merge(Yanhg38v109, y = Petropouloshg38v109f, add.cell.ids = c("Yan", "Petropoulos"), project = "embryo_merge", merge.data = TRUE)
+# Standard PCA-UMAP analysis
+merged_embryo <- NormalizeData(merged_embryo, normalization.method = "LogNormalize", scale.factor = 10000)
+merged_embryo <- FindVariableFeatures(merged_embryo, selection.method = "vst", nfeatures = 2000)
+merged_embryo <- ScaleData(merged_embryo, features = all.genesP)
+merged_embryo <- RunPCA(merged_embryo, features = all.genesP)
+DimPlot(merged_embryo, reduction = "pca")
+Idents(merged_embryo) <- "Type3"
+my_levels_merged <- c("oocyte_Y", "zygote_Y", "two_cell_Y", "four_cell_Y", "eight_cell_Y", "E3_P", "morula_Y", "E4_P", "E4.late_P", "E5.early_P", "E5_P", "E6_P", "E7_P", "hESCp10_Y", "PE_P", "TE_P")
+merged_embryo@active.ident <- factor(x = merged_embryo@active.ident, levels = my_levels_merged)
+DimPlot(merged_embryo, reduction = "pca")
+Idents(merged_embryo) <- "sample"
+merged_embryo <- FindNeighbors(merged_embryo, dims = 1:50)
+merged_embryo <- FindClusters(merged_embryo, resolution = 0.5)
+merged_embryo <- RunUMAP(merged_embryo, dims = 1:50, return.model = TRUE, reduction = "pca", 
+                         reduction.name = "UMAP")
+DimPlot(merged_embryo, reduction = "UMAP", dims = c(1, 2))
+Idents(merged_embryo) <- "Type"
+my_levels_merged <- c("oocyte", "zygote", "two_cell", "four_cell", "eight_cell", "morula", "prelineage_ICM", "naive epiblast", "hESC_p10")
+merged_embryo@active.ident <- factor(x = merged_embryo@active.ident, levels = my_levels_merged)
+DimPlot(merged_embryo, reduction = "pca", cols= c("black",  "violetred2", "seagreen3", "purple3" ,"orange2", "red2", "red4", "cyan2", "blue2"), order=T) + 
+  theme(text = element_text(size = 20), axis.text = element_text(size = 20))
+# Retrieve gene lists from Figure 1b script
+preZGA_Ribo_genes <- intersect(preZGA_Ribo, all.genesP)
+preZGA_Ribo_TF <- intersect(preZGA_Ribo_genes, genes_humanTF)
+preZGA_Ribo_TF_8L_UP <- intersect(preZGA_Ribo_TF, genes_8lines_UP)
+eight_cell_Ribo_genes <- intersect(eight_cell_Ribo, all.genesP)
+eight_cell_Ribo_TF <- intersect(eight_cell_Ribo_genes, genes_humanTF)
+eight_cell_Ribo_TF_8L_UP <- intersect(eight_cell_Ribo_TF, genes_8lines_UP)
+ICM_Ribo_genes <- intersect(ICM_Ribo, all.genesP)
+ICM_Ribo_TF <- intersect(ICM_Ribo_genes, genes_humanTF)
+ICM_Ribo_TF_8L_UP <- intersect(ICM_Ribo_TF, genes_8lines_UP)
+# Calculate module scores
+merged_embryo[["RNA"]] <- JoinLayers(merged_embryo[["RNA"]])
+merged_embryo <- AddModuleScore(merged_embryo, features= list(preZGA_Ribo_TF_8L_UP), verbose = T, name = "preZGA_Ribo_TF_8L_UP_")
+merged_embryo <- AddModuleScore(merged_embryo, features= list(eight_cell_Ribo_TF_8L_UP), verbose = T, name = "eight_cell_Ribo_TF_8L_UP_")
+merged_embryo <- AddModuleScore(merged_embryo, features= list(ICM_Ribo_TF_8L_UP), verbose = T, name = "ICM_Ribo_TF_8L_UP_")
+# Create Figures
+Idents(merged_embryo) <- "Type"
+my_levels_merged <- c("oocyte", "zygote", "two_cell", "four_cell", "eight_cell", "morula", "prelineage_ICM", "naive epiblast", "hESC_p10")
+merged_embryo@active.ident <- factor(x = merged_embryo@active.ident, levels = my_levels_merged)
+DimPlot(merged_embryo, reduction = "pca", cols= c("black",  "violetred2", "seagreen3", "purple3" ,"orange2", "red2", "red4", "cyan2", "blue2"), order=T) + 
+  theme(text = element_text(size = 20), axis.text = element_text(size = 20))
+FeaturePlot(merged_embryo, reduction = "pca",  features = "preZGA_Ribo_TF_8L_UP_1", cols = c("white", "red"), order=T, pt.size = 0.5, min.cutoff = -0.2, max.cutoff = 0.2) + 
+  scale_colour_gradient2(low = "grey95", mid = "grey95", high = "red2", midpoint = 0, na.value = "grey50", limits = c(-0.2,0.2))
+FeaturePlot(merged_embryo, reduction = "pca",  features = "eight_cell_Ribo_TF_8L_UP_1", cols = c("white", "red"), order=T, pt.size = 0.5, min.cutoff = -0.2, max.cutoff = 0.2) + 
+  scale_colour_gradient2(low = "grey95", mid = "grey95", high = "red2", midpoint = 0, na.value = "grey50", limits = c(-0.2,0.2))
+FeaturePlot(merged_embryo, reduction = "pca",  features = "ICM_Ribo_TF_8L_UP_1", cols = c("white", "red"), order=T, pt.size = 0.5, min.cutoff = -0.2, max.cutoff = 0.2) + 
+  scale_colour_gradient2(low = "grey95", mid = "grey95", high = "red2", midpoint = 0, na.value = "grey50", limits = c(-0.2,0.2))
