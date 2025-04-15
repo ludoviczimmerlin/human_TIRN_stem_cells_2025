@@ -1,0 +1,40 @@
+library("DiffBind")
+library("DESeq2")
+
+#NSO analysis
+list <- file.path("path_to_csv_file/Diffbind_SON_IDR_peaks.csv")
+# all bam and bed files are avaialble through the GEO database (GSE291713)
+# https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE291713
+
+sampleslist <- read.csv(list)
+analysis <- dba(sampleSheet=sampleslist)
+plot(analysis)
+
+#affinity(read count) data
+analysis <- dba.count(analysis)
+info <- dba.show(analysis)
+libsizes <- cbind(LibReads=info$Reads, FRiP=info$FRiP, PeakReads=round(info$Reads * info$FRiP))
+rownames(libsizes) <- info$ID
+libsizes
+plot(analysis)
+
+#normalization
+analysis <- dba.normalize(analysis)
+normalizedanalysis <- dba.normalize(analysis, bRetrieve=TRUE)
+normalizedanalysis
+normlibs <- cbind(FullLibSize=normalizedanalysis$lib.sizes, NormFacs=normalizedanalysis$norm.factors,
+                  NormLibSize=round(normalizedanalysis$lib.sizes/normalizedanalysis$norm.factors))
+rownames(normlibs) <- info$ID
+normlibs
+
+analysis <- dba.contrast(analysis, minMembers=2, reorderMeta=list(Condition="E8"))
+
+#differential analysis
+analysis <- dba.analyze(analysis)
+dba.show(analysis, bContrasts=TRUE)
+plot(analysis, contrast=4)
+
+#retrieving differentially bound sites
+NSO_peaks <- dba.report(analysis, method=DBA_DESEQ2, contrast=4, bCounts=TRUE, bCalled=TRUE, th=1)
+NSO_peaks_DF <- as.data.frame(NSO_peaks)
+write.table(NSO_peaks_DF, file="path_to_file/SON_peaks_deseq2.txt", sep="\t", quote=F, row.names=F)

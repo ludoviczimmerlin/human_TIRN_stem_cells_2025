@@ -1,0 +1,112 @@
+library("DESeq2")
+library(AnnotationHub)
+library('ComplexHeatmap')
+library(RColorBrewer)
+mypalette <- brewer.pal(11,"RdYlBu")
+morecols <- colorRampPalette(mypalette)
+library(writexl)
+library(dplyr)
+
+#Zou_clusters are provided in Figure 1 script
+
+#annotated DEGs can be extracted from Table S3
+
+# DEG
+
+
+#DeSeq2 object can be constructed from raw count matrix obtained through GEO accession GSE271242
+# RUES02 fpkm
+fpkm_mat <- fpkm(dds)
+#Translate EnsemblIDs
+fpkm_mat <- data.frame(fpkm_mat)
+fpkm_mat$EnsemblID <- rownames(fpkm_mat)
+fpkm_mat$gene_symbol <- mapIds(x = EnsDb.Hsapiens.v109, keys = fpkm_mat$EnsemblID,
+                               column = "SYMBOL",
+                               keytype = "GENEID",
+                               multiVals = "first")
+
+fpkm_mat$gene_symbol2 <- fpkm_mat$gene_symbol
+fpkm_mat$gene_symbol2[fpkm_mat$gene_symbol2==""]<-NA
+fpkm_mat$gene_symbol2 <- ifelse(is.na(fpkm_mat$gene_symbol2), fpkm_mat$EnsemblID, fpkm_mat$gene_symbol2)
+fpkm_mat$gene_symbol <- make.unique(fpkm_mat$gene_symbol2)
+rownames(fpkm_mat) <- fpkm_mat$gene_symbol
+fpkm_mat <- subset(fpkm_mat, select = -c(gene_symbol2))
+fpkm_mat <- subset(fpkm_mat, select = -c(EnsemblID, gene_symbol))
+#add row means fpkm
+fpkm_mat$RUES02E8 <- rowMeans(fpkm_mat[,c("RUES02E8_1_001", "RUES02E8_1_002", "RUES02E8_1_003", "RUES02E8_001", "RUES02E8_002", "RUES02E8_003")])
+fpkm_mat$RUES02E8Dux4 <- rowMeans(fpkm_mat[,c("RUES02E8Dux4_001", "RUES02E8Dux4_002", "RUES02E8Dux4_003")])
+fpkm_mat$RUES02L3i <- rowMeans(fpkm_mat[,c("RUES02L3i_1_001", "RUES02L3i_1_002", "RUES02L3i_1_003", "RUES02L3i_001", "RUES02L3i_002", "RUES02L3i_003")])
+fpkm_mat$RUES02L3iDux4 <- rowMeans(fpkm_mat[,c("RUES02L3iDux4_1_001", "RUES02L3iDux4_1_002", "RUES02L3iDux4_1_003", "RUES02L3iDux4_001", "RUES02L3iDux4_002", "RUES02L3iDux4_003")])
+labels <- c("P", "PD", "T", "TD")
+
+fpkm_mat <- subset(fpkm_mat, select = c(RUES02E8, RUES02E8Dux4, RUES02L3i, RUES02L3iDux4))
+
+fpkm_mat <- as.matrix(fpkm_mat)
+var <- apply(fpkm_mat, 1, var)
+selectedGenesV <- names(var[var>0])
+
+log2fpkm_mat <- log2(fpkm_mat + 1)
+log2var <- apply(log2fpkm_mat, 1, var)
+log2fpkm_RUES02selectedGenesV <- names(log2var[log2var>0])
+
+# substract interested genes with Zou replicate log2
+fpkm_RUES02_Zou_GenesV <- intersect(intersect(genes_humanTF_UP , intersect(log2fpkm_RUES02selectedGenesV, log2selectedGenesV)), preZGA_8C_ICM)
+setdiff(filteredTF_V_TF_UP, fpkm_RUES02_Zou_GenesV)
+
+filteredlog2fpkm_mat <- log2fpkm_mat[fpkm_RUES02_Zou_GenesV, ]
+
+filteredlog2fpkm_mat_scale <- t(scale(t(filteredlog2fpkm_mat)))
+
+
+clusterDF <- rownames(filteredlog2fpkm_mat_scale)
+clusterDF <- as.data.frame(clusterDF)
+rownames(clusterDF) <- clusterDF$clusterDF
+clusterDF$cluster <- NA
+clusterDF$cluster <- ifelse(clusterDF$clusterDF %in% preZGA, "pre ZGA",
+                            ifelse(clusterDF$clusterDF %in% eight_cell, "eight cell",
+                                   ifelse(clusterDF$clusterDF %in% ICM, "ICM", NA)))
+
+mylevelsZ <- c("pre ZGA", "eight cell", "ICM")
+split <- factor (x = clusterDF$cluster, levels = mylevelsZ)
+ordercol_mean <- c("RUES02E8", "RUES02E8Dux4", "RUES02L3i", "RUES02L3iDux4")
+mypalette <- brewer.pal(11,"RdYlBu")
+morecols <- colorRampPalette(mypalette)
+
+Heatmap(filteredlog2fpkm_mat_scale, name = "RUES02 log2(FPKM+1)", split = split,
+        show_row_names = FALSE, col=rev(morecols(50)), cluster_columns = FALSE, cluster_row_slices = FALSE,
+        clustering_method_rows = "ward.D2", clustering_distance_rows = "pearson", 
+        row_names_gp = gpar(fontsize = 7), row_gap = unit(1.5, "mm"), row_title_rot = 0, column_names_gp = gpar(fontsize = 15), row_title_gp = gpar(fontsize = 15))
+
+Heatmap(filteredlog2fpkm_mat_scale, name = "RUES02 log2(FPKM+1)", split = split,
+        show_row_names = FALSE, col=rev(morecols(50)), cluster_columns = FALSE, cluster_row_slices = FALSE,
+        clustering_method_rows = "ward.D2", clustering_distance_rows = "pearson", row_dend_reorder = -filteredmat1_scale$RUES02L3i,
+        row_names_gp = gpar(fontsize = 7), row_gap = unit(1.5, "mm"), row_title_rot = 0, column_names_gp = gpar(fontsize = 15), row_title_gp = gpar(fontsize = 15))
+
+
+log2filtereddatamatrix2 <- log2datamatrix[fpkm_RUES02_Zou_GenesV, ]
+log2filtereddatamatrix2_scale <- t(scale(t(log2filtereddatamatrix2)))
+
+
+
+ht1<- Heatmap(log2filtereddatamatrix2_scale, name = "Zou log2(FPKM+1)", split = split,
+              show_row_names = FALSE, col=rev(morecols(50)), cluster_columns = FALSE, cluster_row_slices = FALSE,
+              clustering_method_rows = "ward.D2", clustering_distance_rows = "pearson", row_dend_reorder = -filteredmat1_scale$RUES02L3i,
+              row_names_gp = gpar(fontsize = 7), row_gap = unit(1.5, "mm"), row_title_rot = 0, column_names_gp = gpar(fontsize = 15), row_title_gp = gpar(fontsize = 15))
+ht1
+
+
+ht2 <- Heatmap(filteredlog2fpkm_mat_scale, name = "RUES02 log2(FPKM+1)", split = split,
+               show_row_names = FALSE, col=rev(morecols(50)), cluster_columns = FALSE, cluster_row_slices = FALSE,
+               clustering_method_rows = "ward.D2", clustering_distance_rows = "pearson", row_dend_reorder = -filteredmat1_scale$RUES02L3i,
+               row_names_gp = gpar(fontsize = 7), row_gap = unit(1.5, "mm"), row_title_rot = 0, column_names_gp = gpar(fontsize = 15), row_title_gp = gpar(fontsize = 15))
+ht2
+draw(ht1 + ht2, ht_gap = unit(5, "mm"))
+
+Heatmap(filteredlog2fpkm_mat_scale, name = "RUES02 log2(FPKM+1)", split = split,
+        show_row_names = FALSE, col=rev(morecols(50)), cluster_columns = FALSE, cluster_row_slices = FALSE,
+        clustering_method_rows = "ward.D2", clustering_distance_rows = "pearson", row_dend_reorder = -filteredmat1_scale$RUES02L3i,
+        row_names_gp = gpar(fontsize = 7), row_gap = unit(1.5, "mm"), row_title_rot = 0, column_names_gp = gpar(fontsize = 15), row_title_gp = gpar(fontsize = 15)) +
+  Heatmap(log2filtereddatamatrix2_scale, name = "Zou log2(FPKM+1)", split = split,
+          show_row_names = FALSE, col=rev(morecols(50)), cluster_columns = FALSE, cluster_row_slices = FALSE,
+          row_dend_reorder = -filteredmat1_scale$RUES02L3i,
+          row_names_gp = gpar(fontsize = 7), row_gap = unit(1.5, "mm"), row_title_rot = 0, column_names_gp = gpar(fontsize = 15), row_title_gp = gpar(fontsize = 15))
